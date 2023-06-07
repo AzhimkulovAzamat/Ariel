@@ -1,2 +1,2 @@
 # Ariel
-Automated Repository Integration and Execution Logger
+**A**utomated **R**epository **I**ntegration and **E**xecution **L**ogger
