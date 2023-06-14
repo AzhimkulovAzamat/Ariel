@@ -1,5 +1,7 @@
 import requests
 
+from sevices.vcs.vcs_protocol import BaseResponse
+
 
 def parse_projects(json) -> str:
     if len(json) == 0:
@@ -12,7 +14,7 @@ def parse_projects(json) -> str:
     return message
 
 
-def parse_mr_details(response, success_message: str) -> str:
+def parse_mr_details(response, success_message: str, jira_link: str = None) -> str:
     if response.status_code < requests.codes.accepted:
         if isinstance(response.json(), list):
             json = response.json()[0]
@@ -25,41 +27,14 @@ def parse_mr_details(response, success_message: str) -> str:
         title = json['title'].replace('_', '\_')
         description = json['description'].replace('_', '\_')
         status = json['detailed_merge_status'].replace('_', ' ')
-        return f'{success_message}\n\n' \
-               f'Запрос на слияние {source} в {target}\n' \
-               f'Идентификатор: {iid}\n' \
-               f'Статус: {status}\n' \
-               f'Заголовок: {title}\nОписание:\n{description}\n\n' \
-               f'Ссылка на [gitlab]({web_url})'
-    else:
-        json = response.json()
-        error_message = json.get('message', json.get('error', 'Unexpected error on external service occurred'))
-        if isinstance(error_message, list):
-            developer_error_message = error_message[0]
-        else:
-            developer_error_message = error_message
-        return developer_error_message
-
-
-def parse_mr_list_as_message(response, empty_message='Список пуст') -> str:
-    if response.status_code < requests.codes.accepted and isinstance(response.json(), list):
-        json = response.json()
-        filtered_items = list(filter(lambda mr: mr['iid'] >= 550, json))
-        if len(filtered_items) == 0:
-            return empty_message
-        message = ''
-        last = filtered_items[-1]
-        for item in filtered_items:
-            source = item['source_branch'].replace('_', '\_')
-            target = item['target_branch'].replace('_', '\_')
-            id = item['iid']
-            url = item['web_url']
-            id_link = f'[{id}]({url})'
-            title = item['title'].replace('_', '\_')
-            status = item['detailed_merge_status'].replace('_', ' ')
-            message += f'_{title}_\n{id_link} - {source} -> {target}\nГотовность слияния: *{status}*'
-            if id != last['iid']:
-                message += '\n\n'
+        message = f'{success_message}\n\n' \
+                  f'Запрос на слияние {source} в {target}\n' \
+                  f'Идентификатор: {iid}\n' \
+                  f'Статус: {status}\n' \
+                  f'Заголовок: {title}\nОписание:\n{description}\n\n' \
+                  f'Ссылка на [gitlab]({web_url})'
+        if jira_link:
+            message += f'\n[Ссылка на Jira]({jira_link})'
         return message
     else:
         json = response.json()
@@ -69,6 +44,29 @@ def parse_mr_list_as_message(response, empty_message='Список пуст') ->
         else:
             developer_error_message = error_message
         return developer_error_message
+
+
+def parse_mr_list_as_message(response: BaseResponse, empty_message='Список пуст') -> str:
+    if response.success and isinstance(response.data, list):
+        data = response.data
+        if len(data) == 0:
+            return empty_message
+        message = ''
+        last = data[-1]
+        for item in data:
+            source = item.source_branch
+            target = item.target_branch
+            id = item.iid
+            url = item.url_link
+            id_link = f'[{id}]({url})'
+            title = item.title
+            status = item.merge_status
+            message += f'_{title}_\n{id_link} - {source} -> {target}\nГотовность слияния: *{status}*'
+            if id != last.iid:
+                message += '\n\n'
+        return message
+    else:
+        return response.message
 
 
 def parse_value(response, name: str):

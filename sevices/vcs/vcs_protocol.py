@@ -4,7 +4,8 @@ from rest_framework.response import Response
 
 
 class VcsResponseModel:
-    def __init__(self, source_branch, target_branch, iid, url_link, title, description, merge_status):
+    def __init__(self, source_branch, target_branch, iid, url_link, title, description, merge_status, draft,
+                 should_delete_source):
         self.source_branch = source_branch
         self.target_branch = target_branch
         self.iid = iid
@@ -12,6 +13,8 @@ class VcsResponseModel:
         self.title = title
         self.description = description
         self.merge_status = merge_status
+        self.draft = draft
+        self.should_delete_source = should_delete_source
 
 
 def class_to_dict(obj):
@@ -71,7 +74,8 @@ class VcsProtocol(Protocol):
     def check_branch_exists(self, branch_name: str) -> bool:
         pass
 
-    def edit_pull_request(self, mr_id, title: str, description: str, source: str, target: str) -> BaseResponse:
+    def edit_pull_request(self, mr_id, title: str = None, description: str = None, source: str = None,
+                          target: str = None, remove_source: bool = None) -> BaseResponse:
         pass
 
     def check_id_mr_mergeable(self, mr_id) -> BaseResponse:

@@ -45,10 +45,10 @@ class GitlabService(VcsProtocol):
                                                  self._parse_error)
 
     def merge_pull_request(self, mr_id, **params) -> BaseResponse:
-        url = f"{self.project.vcs_base_link}/merge_requests/{mr_id}/merge"
+        url = f"{self.project.vcs_base_link}/merge_requests/{mr_id}/mergee"
         headers = {'Authorization': f'Bearer {self.access.git_token}'}
         payload = {
-            'merge_when_pipeline_succeeds': True,
+            'merge_when_pipeline_succeeds': False,
         }
         response = requests.put(url, headers=headers, data=payload)
         return BaseResponse.create_from_response(response, requests.codes.ok, self._parse_mr_detail,
@@ -65,15 +65,18 @@ class GitlabService(VcsProtocol):
         else:
             return False
 
-    def edit_pull_request(self, mr_id, title: str, description: str, source: str, target: str) -> BaseResponse:
+    def edit_pull_request(self, mr_id, title: str = None, description: str = None, source: str = None,
+                          target: str = None, remove_source: bool = None) -> BaseResponse:
         url = f"{self.project.vcs_base_link}/merge_requests/{mr_id}"
         headers = {'Authorization': f'Bearer {self.access.git_token}'}
         payload = {
             'title': title,
             'description': description,
             'source_branch': source,
-            'target_branch': target
+            'target_branch': target,
+            'remove_source_branch': remove_source
         }
+        payload = {key: value for key, value in payload.items() if value is not None}
         response = requests.put(url, headers=headers, data=payload)
         return BaseResponse.create_from_response(response, requests.codes.ok, self._parse_mr_detail,
                                                  self._parse_error)
@@ -86,7 +89,7 @@ class GitlabService(VcsProtocol):
                                                  self._parse_error)
 
     def get_ci_variables(self, name: str, **params) -> BaseResponse:
-        url = f"{self.project.vcs_base_link}/ci/variables"
+        url = f"{self.project.vcs_base_link}/variables/{name}"
         headers = {'Authorization': f'Bearer {self.access.git_token}'}
         response = requests.get(url, headers=headers, params=params)
         return BaseResponse.create_from_response(response, requests.codes.ok, self._parse_ci_variables,
@@ -94,7 +97,7 @@ class GitlabService(VcsProtocol):
 
     @staticmethod
     def _parse_ci_variables(json):
-        variables = json.get('variables')
+        variables = json.get('value')
         return variables
 
     @staticmethod
@@ -106,8 +109,9 @@ class GitlabService(VcsProtocol):
         title = json['title'].replace('_', '\_')
         description = json['description'].replace('_', '\_')
         status = json['detailed_merge_status'].replace('_', ' ')
+        remove_source_branch = json['force_remove_source_branch']
 
-        return VcsResponseModel(source, target, iid, web_url, title, description, status)
+        return VcsResponseModel(source, target, iid, web_url, title, description, status, title.lower().startswith("draft:"), remove_source_branch)
 
     @staticmethod
     def _parse_mr_mergeable_status(json):

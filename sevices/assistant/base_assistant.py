@@ -46,9 +46,9 @@ class BaseAssistant(AssistantProtocol):
         return self.vcs_protocol.create_pull_request(title, description, source_branch, target_branch)
 
     def _prepare_new_version(self, track: str, source_branch, target_branch) -> BaseResponse:
-        revision_version = self.vcs_protocol.get_ci_variables("REVISION_VERSION")
-        build_version = self.vcs_protocol.get_ci_variables("BUILD_NUMBER")
-        if track == 'production':
+        revision_version = self.vcs_protocol.get_ci_variables("REVISION_VERSION").data
+        build_version = self.vcs_protocol.get_ci_variables("BUILD_NUMBER").data
+        if track != 'production':
             logs_title = "DEVELOPMENT_TICKETS"
             title = f"MR for {track} v3.1.{revision_version}.{build_version}"
         else:
@@ -56,7 +56,7 @@ class BaseAssistant(AssistantProtocol):
             title = f"MR for {track} v3.1.{revision_version}"
 
         logs = self.vcs_protocol.get_ci_variables(logs_title)
-        message = self.issue_tracker.get_beautified_logs(logs)
+        message = self.issue_tracker.get_beautified_logs(logs.data)
 
         response = self.vcs_protocol.create_pull_request(title, message, source_branch, target_branch)
         if response.status_code == requests.codes.created:

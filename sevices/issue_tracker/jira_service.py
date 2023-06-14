@@ -22,7 +22,7 @@ class JiraService(IssueTrackerProtocol):
                                                  self._parse_error)
 
     def get_url_for_ticket(self, ticket_id) -> str:
-        return f'https://{self.project.issue_tracker_link}/browse/{ticket_id}'
+        return f'{self.project.issue_tracker_link}/browse/{ticket_id}'
 
     def get_ticket_id_from_branch(self, name: str) -> str:
         return name.split("/")[-1]

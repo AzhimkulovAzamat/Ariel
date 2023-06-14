@@ -92,6 +92,11 @@ class MyCallbackQueryHandler(BaseHandler):
         if 'project_id' in self.params:
             self.context.chat_data['project_id'] = self.params['project_id']
 
+    async def send_bot_message(self, message: str, reply_markup: InlineKeyboardMarkup = None):
+        await self.update.callback_query.answer()
+        await self.update.callback_query.message.delete()
+        await super().send_bot_message(message, reply_markup)
+
     def from_user(self):
         return self.update.callback_query.from_user
 

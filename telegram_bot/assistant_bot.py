@@ -1,7 +1,8 @@
 import logging
 from telegram.ext import ApplicationBuilder
 
-from telegram_bot.flows import RegistrationFlow, ProjectAssistantFlow, CreatePullRequest, GetPullRequests
+from telegram_bot.flows import RegistrationFlow, ProjectAssistantFlow, CreatePullRequest, GetPullRequests, \
+    PrepareRelease
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -15,5 +16,6 @@ if __name__ == '__main__':
     ProjectAssistantFlow().register(application)
     CreatePullRequest().register(application)
     GetPullRequests().register(application)
+    PrepareRelease().register(application)
 
     application.run_polling()

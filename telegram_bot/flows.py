@@ -3,7 +3,7 @@ import os
 import django
 import telegram
 
-from sevices.vcs.vcs_protocol import BaseResponse
+from sevices.vcs.vcs_protocol import BaseResponse, VcsResponseModel
 from telegram_bot.helper.sender import call_async
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ArielProject.settings')
@@ -68,9 +68,9 @@ class ProjectAssistantFlow:
         keyboard = []
 
         for item in projects:
-            id = item['pk']
+            iid = item['pk']
             name = item['name']
-            keyboard.append([InlineKeyboardButton(name, callback_data=f'action_project project_id={id}')])
+            keyboard.append([InlineKeyboardButton(name, callback_data=f'action_project project_id={iid}')])
 
         reply_markup = InlineKeyboardMarkup(keyboard)
         await handler.hide_loading()
@@ -80,9 +80,9 @@ class ProjectAssistantFlow:
     async def action_project(update: Update, context: ContextTypes.DEFAULT_TYPE):
         handler = await MyCallbackQueryHandler(update, context).initialize()
         await handler.show_loading()
-        id = handler.project_id
+        iid = handler.project_id
         keyboard = [
-            [InlineKeyboardButton('Создать мерж реквест', callback_data=f'create_mr project_id={id}')],
+            [InlineKeyboardButton('Создать мерж реквест', callback_data=f'create_mr project_id={iid}')],
             [InlineKeyboardButton('Список мерж реквестов', callback_data=f'mrs project_id={handler.project_id}')],
             [InlineKeyboardButton('Подготовка альфа релиза', callback_data=f'alpha project_id={handler.project_id}')],
             [InlineKeyboardButton('Подготовка бета релиза', callback_data=f'beta project_id={handler.project_id}')],
@@ -141,7 +141,7 @@ class CreatePullRequest:
                 title = response.data.title
                 handler.save('title', title)
                 await handler.send_bot_message('Введите описание. Используйте плейсхолдер &tojira, '
-                                       'чтобы указать в описаниие ссылку на тикет в Jira')
+                                               'чтобы указать в описаниие ссылку на тикет в Jira')
                 return self.ASK_MESSAGE
             else:
                 await handler.send_bot_message(
@@ -150,7 +150,7 @@ class CreatePullRequest:
         else:
             handler.save('title', handler.data)
             await handler.send_bot_message('Введите описание. Используйте плейсхолдер &tojira, '
-                                       'чтобы указать в описаниие ссылку на тикет в Jira')
+                                           'чтобы указать в описаниие ссылку на тикет в Jira')
             return self.ASK_MESSAGE
 
     async def receive_description(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -172,7 +172,8 @@ class CreatePullRequest:
                                        f'Описание: {answer}.\n\nВсе верно? Да/Нет')
         return self.CONFIRM
 
-    async def confirm_creation_mr(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+    @staticmethod
+    async def confirm_creation_mr(update: Update, context: ContextTypes.DEFAULT_TYPE):
         handler = await MyConversationHandler(update, context).initialize()
         answer = handler.data
         if answer.lower() == 'да':
@@ -180,12 +181,15 @@ class CreatePullRequest:
             target = handler.get('target')
             title = handler.get('title')
             description = handler.get('description')
-            response: BaseResponse = await call_async(handler.assistant.create_pull_request, title, description, source, target)
+            response: BaseResponse = await call_async(handler.assistant.create_pull_request, title, description, source,
+                                                      target)
             if response.success:
                 message = parse_mr_details(response.response, "Мр успешно создан")
             else:
                 message = response.message
-            await handler.send_bot_message(message)
+            keyboard = get_keyboards(handler.project_id, response.data)
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await handler.send_bot_message(message, reply_markup)
         else:
             await handler.send_bot_message('Отмена создания МР')
         return ConversationHandler.END
@@ -212,9 +216,189 @@ class GetPullRequests:
     async def get_pull_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
         handler = await MyCallbackQueryHandler(update, context).initialize()
         response = await call_async(handler.assistant.get_pull_requests)
-        message = parse_mr_list_as_message(response.response, 'Пустой список доступных МР')
-        await handler.send_bot_message(message)
+
+        keyboard = []
+        for item in response.data:
+            keyboard.append([InlineKeyboardButton(item.title,
+                                                  callback_data=f'update_mr project_id={handler.project_id} '
+                                                                f'mr_id={item.iid}')])
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        message = parse_mr_list_as_message(response, 'Пустой список доступных МР')
+        await handler.send_bot_message(message, reply_markup)
+
+    @staticmethod
+    async def update_pull_requests(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        handler = await MyCallbackQueryHandler(update, context).initialize()
+        mr_id = handler.params['mr_id']
+        response = await call_async(handler.assistant.vcs_protocol.get_pull_request_details, mr_id)
+        ticket_id = handler.assistant.issue_tracker.get_ticket_id_from_branch(response.data.source_branch)
+        jira_link = handler.assistant.issue_tracker.get_url_for_ticket(ticket_id)
+        message = parse_mr_details(response.response, "Информация о МР", jira_link)
+        keyboard = get_keyboards(handler.project_id, response.data)
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await handler.send_bot_message(message, reply_markup)
+
+    @staticmethod
+    async def action_merge(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        handler = await MyCallbackQueryHandler(update, context).initialize()
+        mr_id = handler.params['mr_id']
+        response = await call_async(handler.assistant.vcs_protocol.merge_pull_request, mr_id)
+        ticket_id = handler.assistant.issue_tracker.get_ticket_id_from_branch(response.data.source_branch)
+        jira_link = handler.assistant.issue_tracker.get_url_for_ticket(ticket_id)
+        base = parse_mr_details(response.response, "Ветка успешно залита", jira_link)
+        if response.success:
+            keyboard = get_keyboards(handler.project_id, response.data)
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await handler.send_bot_message(base, reply_markup)
+        else:
+            await handler.send_bot_message(base)
+
+    @staticmethod
+    async def action_draft(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        handler = await MyCallbackQueryHandler(update, context).initialize()
+        mr_id = handler.params['mr_id']
+        response = await call_async(handler.assistant.vcs_protocol.get_pull_request_details, mr_id)
+        title = response.data.title
+        if response.data.draft:
+            title = title.replace('Draft: ', '')
+            message = 'МР помечен как готов к слиянию'
+        else:
+            title = 'Draft: ' + title
+            message = 'МР в процессе разработки'
+        edit_response = await call_async(handler.assistant.vcs_protocol.edit_pull_request, mr_id, title)
+        ticket_id = handler.assistant.issue_tracker.get_ticket_id_from_branch(response.data.source_branch)
+        jira_link = handler.assistant.issue_tracker.get_url_for_ticket(ticket_id)
+        base = parse_mr_details(edit_response.response, message, jira_link)
+        keyboard = get_keyboards(handler.project_id, edit_response.data)
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await handler.send_bot_message(base, reply_markup)
+
+    @staticmethod
+    async def action_remove_source(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        handler = await MyCallbackQueryHandler(update, context).initialize()
+        mr_id = handler.params['mr_id']
+        response = await call_async(handler.assistant.vcs_protocol.get_pull_request_details, mr_id)
+        should_delete_source = response.data.should_delete_source
+        edit_response = await call_async(handler.assistant.vcs_protocol.edit_pull_request, mr_id,
+                                         remove_source=not should_delete_source)
+        if edit_response.data.should_delete_source:
+            message = f'{edit_response.data.source_branch} будет удалена при мердже'
+        else:
+            message = f'{edit_response.data.source_branch} будет сохранна при мердже'
+        ticket_id = handler.assistant.issue_tracker.get_ticket_id_from_branch(response.data.source_branch)
+        jira_link = handler.assistant.issue_tracker.get_url_for_ticket(ticket_id)
+        base = parse_mr_details(edit_response.response, message, jira_link)
+        keyboard = get_keyboards(handler.project_id, edit_response.data)
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await handler.send_bot_message(base, reply_markup)
 
     def register(self, application):
         create_mr = CallbackQueryHandler(self.get_pull_requests, pattern=r'^mrs project_id=\d+$')
         application.add_handler(create_mr)
+        application.add_handler(CallbackQueryHandler(self.update_pull_requests,
+                                                     pattern=r"update_mr project_id=(\d+) mr_id=(\d+)"))
+        application.add_handler(CallbackQueryHandler(self.action_merge,
+                                                     pattern=r"action_merge project_id=(\d+) mr_id=(\d+)"))
+        application.add_handler(CallbackQueryHandler(self.action_draft,
+                                                     pattern=r"action_draft project_id=(\d+) mr_id=(\d+)"))
+        application.add_handler(CallbackQueryHandler(self.action_remove_source,
+                                                     pattern=r"action_remove_source project_id=(\d+) mr_id=(\d+)"))
+
+
+class PrepareRelease:
+
+    @staticmethod
+    async def alpha(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        handler = await MyCallbackQueryHandler(update, context).initialize()
+        await handler.show_loading()
+        response = await call_async(handler.assistant.prepare_alpha)
+        message = parse_mr_details(response.response, 'Альфа релиз готов к слиянию')
+        if response.success:
+            keyboard = [
+                [InlineKeyboardButton('Запуск слияния', callback_data=f'merge_release project_id={handler.project_id} '
+                                                                      f'mr_id={response.data.iid}')],
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+        else:
+            reply_markup = None
+        await handler.hide_loading()
+        await handler.send_bot_message(message, reply_markup)
+
+    @staticmethod
+    async def beta(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        handler = await MyCallbackQueryHandler(update, context).initialize()
+        await handler.show_loading()
+        response = await call_async(handler.assistant.publish_beta)
+        message = parse_mr_details(response.response, 'Бета релиз готов к слиянию')
+        if response.success:
+            keyboard = [
+                [InlineKeyboardButton('Запуск слияния', callback_data=f'merge_release project_id={handler.project_id} '
+                                                                      f'mr_id={response.data.iid}')],
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+        else:
+            reply_markup = None
+        await handler.hide_loading()
+        await handler.send_bot_message(message, reply_markup)
+
+    @staticmethod
+    async def prod(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        handler = await MyCallbackQueryHandler(update, context).initialize()
+        await handler.show_loading()
+        response = await call_async(handler.assistant.publish_production)
+        message = parse_mr_details(response.response, 'Прод релиз готов к слиянию')
+        if response.success:
+            keyboard = [
+                [InlineKeyboardButton('Запуск слияния', callback_data=f'merge_release project_id={handler.project_id} '
+                                                                      f'mr_id={response.data.iid}')],
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+        else:
+            reply_markup = None
+        await handler.hide_loading()
+        await handler.send_bot_message(message, reply_markup)
+
+    @staticmethod
+    async def merge_release(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        handler = await MyCallbackQueryHandler(update, context).initialize()
+        await handler.show_loading()
+        mr_id = handler.params['mr_id']
+        response = await call_async(handler.assistant.vcs_protocol.merge_pull_request, mr_id)
+        target_branch = response.data.target_branch
+        base = parse_mr_details(response.response, f"CI для {target_branch} запущен")
+        await handler.hide_loading()
+        await handler.send_bot_message(base)
+
+    def register(self, application):
+        application.add_handler(CallbackQueryHandler(self.alpha, pattern=r'^alpha project_id=\d+$'))
+        application.add_handler(CallbackQueryHandler(self.beta, pattern=r'^beta project_id=\d+$'))
+        application.add_handler(CallbackQueryHandler(self.prod, pattern=r'^prod project_id=\d+$'))
+        application.add_handler(
+            CallbackQueryHandler(self.merge_release, pattern=r'^merge_release project_id=(\d+) mr_id=(\d+)'))
+
+
+def get_keyboards(project_id, mr: VcsResponseModel):
+    if mr.merge_status == 'not open':
+        return []
+
+    data = f'project_id={project_id} mr_id={mr.iid}'
+    keyboards = [
+        [InlineKeyboardButton('Update', callback_data=f'update_mr {data}')],
+    ]
+
+    if mr.merge_status == 'mergeable':
+        keyboards.append([InlineKeyboardButton('Merge', callback_data=f'action_merge {data}')])
+
+    if mr.draft:
+        keyboards.append([InlineKeyboardButton('Mark as ready', callback_data=f'action_draft {data}')])
+    else:
+        keyboards.append([InlineKeyboardButton('Mark as draft', callback_data=f'action_draft {data}')])
+
+    if mr.should_delete_source:
+        keyboards.append(
+            [InlineKeyboardButton('Save source branch', callback_data=f'action_remove_source {data}')])
+    else:
+        keyboards.append(
+            [InlineKeyboardButton('Delete source branch', callback_data=f'action_remove_source {data}')])
+    return keyboards
