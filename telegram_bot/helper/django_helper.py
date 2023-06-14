@@ -1,7 +1,6 @@
 from asgiref.sync import sync_to_async
 from django.contrib.auth import authenticate
 from django.contrib.auth.models import User, UserManager
-from django.db.models import Manager
 
 from project.models import Project, Access
 from telegram_bot.helper.sender import call_async
@@ -18,7 +17,9 @@ def get_user(username, password):
 
 async def get_project_from_user(user):
     projects = await sync_to_async(Project.objects.filter)(access__user=user)
-    project_data = await sync_to_async(list)(projects.values('pk', 'name', 'vcs_base_link', 'issue_tracker_link'))
+    project_data = await sync_to_async(list)(
+        projects.values('pk', 'name', 'vcs_base_link', 'issue_tracker_link', 'project_manager', 'play_console_link',
+                        'firebase_dashboard_link', 'issue_dashboard_link', 'design_tools_link', 'backend_docs_link'))
     return project_data
 
 

@@ -80,3 +80,9 @@ class VcsProtocol(Protocol):
 
     def check_id_mr_mergeable(self, mr_id) -> BaseResponse:
         pass
+
+    def provide_project_access_status(self) -> BaseResponse:
+        pass
+
+    def request_project_access(self) -> BaseResponse:
+        pass

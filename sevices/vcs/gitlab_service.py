@@ -95,6 +95,23 @@ class GitlabService(VcsProtocol):
         return BaseResponse.create_from_response(response, requests.codes.ok, self._parse_ci_variables,
                                                  self._parse_error)
 
+    def provide_project_access_status(self) -> BaseResponse:
+        email = self.access.user.email
+        url = f"{self.project.vcs_base_link}/members/all"
+        headers = {'Authorization': f'Bearer {self.access.git_token}'}
+
+        url = "https://gitlab.com/api/v4/users"
+        params = {"search": email}
+
+        response = requests.get(url, headers=headers, params=params)
+
+        if response.status_code == 200:
+            users = response.json()
+            if users:
+                return users[0]  # Return the first user found
+
+        return BaseResponse(404, message="Не удалось получить информацию о доступе в гитлабе")
+
     @staticmethod
     def _parse_ci_variables(json):
         variables = json.get('value')
@@ -111,7 +128,8 @@ class GitlabService(VcsProtocol):
         status = json['detailed_merge_status'].replace('_', ' ')
         remove_source_branch = json['force_remove_source_branch']
 
-        return VcsResponseModel(source, target, iid, web_url, title, description, status, title.lower().startswith("draft:"), remove_source_branch)
+        return VcsResponseModel(source, target, iid, web_url, title, description, status,
+                                title.lower().startswith("draft:"), remove_source_branch)
 
     @staticmethod
     def _parse_mr_mergeable_status(json):

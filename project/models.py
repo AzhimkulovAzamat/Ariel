@@ -9,6 +9,12 @@ class Project(models.Model):
     name = models.CharField(max_length=200, verbose_name="Название проекта")
     vcs_base_link = models.URLField(verbose_name="Базовая ссылка репозитория")
     issue_tracker_link = models.URLField(verbose_name="Базовая ссылка на доску задач")
+    project_manager = models.CharField(max_length=200, verbose_name='Проект менеджер', default='https://t.me/vlelik')
+    play_console_link = models.URLField('Ссылка на Play Console', default='')
+    firebase_dashboard_link = models.URLField('Ссылка на Firebase Dashboard', default='')
+    issue_dashboard_link = models.URLField('Ccылка на доску задач', default='')
+    design_tools_link = models.URLField('Ccылка на макет дизайна', default='')
+    backend_docs_link = models.URLField('Ccылка на документацию бека', default='')
 
     def __str__(self):
         return self.name

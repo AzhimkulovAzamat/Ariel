@@ -7,10 +7,35 @@ def parse_projects(json) -> str:
     if len(json) == 0:
         return 'У вас нет доступов к проектам. Обратитесь к вашему администратору, чтобы получить доступ'
 
-    message = 'Выберите доступный вам проект из списка:\n'
+    message = 'Проекты доступные вам:\n'
     for item in json:
         name = item['name']
-        message += f' - {name}\n'
+        project_manager = item['project_manager']
+        message += f'*Проект {name}*\n' \
+                   f'- PM: {project_manager}\n'
+    return message
+
+
+def parse_projects_info(json) -> str:
+    if len(json) == 0:
+        return 'У вас нет доступов к проектам. Обратитесь к вашему администратору, чтобы получить доступ'
+
+    message = 'Проекты доступные вам:\n'
+    for item in json:
+        name = item['name']
+        project_manager = item['project_manager']
+        play_console_link = item['play_console_link']
+        firebase_dashboard_link = item['firebase_dashboard_link']
+        issue_dashboard_link = item['issue_dashboard_link']
+        design_tools_link = item['design_tools_link']
+        backend_docs_link = item['backend_docs_link']
+        message += f'*Проект {name}*\n' \
+                   f'- PM: {project_manager}\n' \
+                   f'- Ccылка на [Play Console]({play_console_link})\n' \
+                   f'- Ссылка на [Firebase dashboard]({firebase_dashboard_link})\n' \
+                   f'- Ссылка на [доску задач]({issue_dashboard_link})\n' \
+                   f'- Ссылка на [макет дизайна]({design_tools_link})\n' \
+                   f'- Ссылка на [документацию бека]({backend_docs_link})\n'
     return message
 
 

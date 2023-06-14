@@ -4,6 +4,7 @@ from telegram import Update, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
+from sevices.access_manager.base_access_manager import BaseAccessManager
 from sevices.assistant.base_assistant import BaseAssistant
 from sevices.issue_tracker.jira_service import JiraService
 from sevices.vcs.gitlab_service import GitlabService
@@ -57,6 +58,7 @@ class BaseHandler(ABC):
         vcs = GitlabService(access.project, access)
         issue_tracker = JiraService(access.project, access)
         self.assistant = BaseAssistant(vcs, issue_tracker)
+        self.access_manager = BaseAccessManager(vcs, issue_tracker)
 
 
 class MyCommandHandler(BaseHandler):

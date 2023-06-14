@@ -15,7 +15,8 @@ from telegram.ext import ContextTypes, CommandHandler, CallbackQueryHandler, Con
 
 from telegram_bot.helper.callback_handler import MyCommandHandler, MyCallbackQueryHandler, MyCommonHandler, \
     MyConversationHandler
-from telegram_bot.helper.response_parse_helper import parse_projects, parse_mr_details, parse_mr_list_as_message
+from telegram_bot.helper.response_parse_helper import parse_projects, parse_mr_details, parse_mr_list_as_message, \
+    parse_projects_info
 from telegram_bot.helper.django_helper import get_project_from_user
 
 from telegram_bot.helper import django_helper
@@ -25,12 +26,18 @@ class RegistrationFlow:
 
     @staticmethod
     async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-        user = update.message.from_user
-        username = user.username
+        telegram_user = update.message.from_user
+        username = telegram_user.username
+        user = await django_helper.get_user_by_telegram_user(telegram_user.id)
+
+        if user:
+            message = f'Hi, {username}.'
+        else:
+            message = f"Hi, {username}. \nPlease login with data, provided by your admin" \
+                      f" \nExample /login username password"
 
         await context.bot.send_message(chat_id=update.effective_chat.id,
-                                       text=f"Hi, {username}. \nPlease login with data, provided by your admin"
-                                            f"\nExample /login username password")
+                                       text=message)
 
     @staticmethod
     async def login(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -52,9 +59,41 @@ class RegistrationFlow:
         else:
             await context.bot.send_message(chat_id=update.effective_chat.id, text="Incorrect number of arguments.")
 
+    @staticmethod
+    async def check_access(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        handler = await MyCommandHandler(update, context).initialize()
+        await handler.show_loading()
+        projects = await get_project_from_user(handler.user)
+        message = parse_projects(projects)
+        keyboard = []
+
+        for item in projects:
+            iid = item['pk']
+            name = item['name']
+            keyboard.append([InlineKeyboardButton(name, callback_data=f'access_resource project_id={iid}')])
+
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        await handler.hide_loading()
+        await handler.send_bot_message(message, reply_markup)
+
+    @staticmethod
+    async def access_resource(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        handler = await MyCallbackQueryHandler(update, context).initialize()
+        await handler.show_loading()
+        response = await call_async(handler.access_manager.provide_vcs_access_status)
+        if response.success:
+            message = response.data
+        else:
+            message = response.message
+        await handler.hide_loading()
+        await handler.send_bot_message(message)
+
+
     def register(self, application):
         application.add_handler(CommandHandler('start', self.start))
         application.add_handler(CommandHandler('login', self.login))
+        application.add_handler(CommandHandler('check_access', self.check_access))
+        application.add_handler(CallbackQueryHandler(self.access_resource, pattern=r'^access_resource project_id=\d+$'))
 
 
 class ProjectAssistantFlow:
@@ -77,6 +116,15 @@ class ProjectAssistantFlow:
         await handler.send_bot_message(message, reply_markup)
 
     @staticmethod
+    async def projects_info(update: Update, context: ContextTypes.DEFAULT_TYPE):
+        handler = await MyCommandHandler(update, context).initialize()
+        await handler.show_loading()
+        projects = await get_project_from_user(handler.user)
+        message = parse_projects_info(projects)
+        await handler.hide_loading()
+        await handler.send_bot_message(message)
+
+    @staticmethod
     async def action_project(update: Update, context: ContextTypes.DEFAULT_TYPE):
         handler = await MyCallbackQueryHandler(update, context).initialize()
         await handler.show_loading()
@@ -93,7 +141,8 @@ class ProjectAssistantFlow:
         await handler.send_bot_message('Что собираемся сделать?', reply_markup)
 
     def register(self, application):
-        application.add_handler(CommandHandler('projects', self.projects))
+        application.add_handler(CommandHandler('assist', self.projects))
+        application.add_handler(CommandHandler('projects', self.projects_info))
         application.add_handler(CallbackQueryHandler(self.action_project, pattern=r'^action_project project_id=\d+$'))
 
 
